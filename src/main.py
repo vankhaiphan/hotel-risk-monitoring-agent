@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 from typing import List, Dict
 from src.news_analyzer import NewsAnalyzer
+from src.weather_analyzer import WeatherAnalyzer
 from src.risk_classifier import RiskClassifier
 from src.proximity import ProximityCalculator
 from src.alerter import Alerter
@@ -11,6 +12,7 @@ class HotelRiskMonitoringAgent:
     """Main agent that monitors and alerts on hotel risks."""
     
     def __init__(self):
+        self.weather_analyzer = WeatherAnalyzer()
         self.news_analyzer = NewsAnalyzer()
         self.risk_classifier = RiskClassifier()
         self.proximity_calc = ProximityCalculator()
@@ -70,30 +72,26 @@ class HotelRiskMonitoringAgent:
     
     def _analyze_hotel(self, hotel: Dict) -> List[Dict]:
         """
-        Analyze a single hotel for risks.
+        Analyze a single hotel for weather risks only.
+        Skips news API calls, uses weather/disaster data.
         
         Returns:
             List of high-risk alerts for this hotel
         """
         alerts = []
         
-        # Search for hotel-specific incidents
-        hotel_articles = self.news_analyzer.search_hotel_risks(
-            hotel['name'],
+        # DISABLED: News API calls - Skip hotel-specific and city news searches
+        # Instead, use only weather/disaster alerts from OpenWeatherMap API
+        weather_articles = self._get_weather_alerts(
             hotel['city'],
-            hotel['country']
+            hotel['country'],
+            hotel['lat'],
+            hotel['lon'],
+            hotel['name']
         )
-        
-        # Search for city-wide incidents
-        city_articles = self.news_analyzer.search_city_risks(
-            hotel['city'],
-            hotel['country']
-        )
-        
-        all_articles = hotel_articles + city_articles
         
         # Classify and filter events
-        for article in all_articles:
+        for article in weather_articles:
             risk_event = self.risk_classifier.classify_event(article, hotel['name'])
             
             if risk_event:
@@ -138,6 +136,15 @@ class HotelRiskMonitoringAgent:
         alerts = self.risk_classifier.filter_and_rank(alerts)
         
         return alerts
+    
+    def _get_weather_alerts(self, city: str, country: str, lat: float, lon: float, hotel_name: str) -> List[Dict]:
+        """
+        Get real weather alerts from OpenWeatherMap API.
+        """
+        # Get real weather alerts from OpenWeatherMap
+        weather_alerts = self.weather_analyzer.get_weather_alerts(lat, lon, hotel_name)
+        
+        return weather_alerts
     
     def _generate_impact_assessment(self, event_type: str, hotel_name: str, 
                                    city: str, distance: float) -> str:
