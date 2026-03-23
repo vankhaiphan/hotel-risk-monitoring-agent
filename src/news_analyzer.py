@@ -1,132 +1,123 @@
+import feedparser
 import requests
-from datetime import datetime, timedelta
-from typing import List, Dict
-from src.config import NEWS_API_KEY, EVENT_LOOKBACK_HOURS
+from datetime import datetime, timedelta, timezone
+from typing import List, Dict, Optional
+from src.config import EVENT_LOOKBACK_HOURS
+
+# Free RSS feeds — no API key, no CORS, works on GitHub Actions
+RSS_FEEDS = [
+    # Global news
+    {"name": "Reuters World", "url": "https://feeds.reuters.com/reuters/worldNews"},
+    {"name": "BBC World", "url": "https://feeds.bbci.co.uk/news/world/rss.xml"},
+    {"name": "AP News", "url": "https://apnews.com/rss"},
+    # Australia-specific
+    {"name": "ABC Australia", "url": "https://www.abc.net.au/news/feed/51120/rss.xml"},
+    {"name": "ABC Australia World", "url": "https://www.abc.net.au/news/feed/45910/rss.xml"},
+    # Asia/Middle East
+    {"name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml"},
+]
 
 class NewsAnalyzer:
-    """Analyzes news articles for hotel-related risks."""
-    
+    """Analyzes RSS news feeds for hotel-related risks. No API key required."""
+
     def __init__(self):
-        self.api_key = NEWS_API_KEY
-        self.base_url = "https://newsapi.org/v2/everything"
         self.lookback_hours = EVENT_LOOKBACK_HOURS
+        self._feed_cache: Optional[List[Dict]] = None  # cache feeds for one run
     
-    def search_news(self, query: str, from_date: str = None) -> List[Dict]:
+    def _fetch_all_feeds(self) -> List[Dict]:
         """
-        Search for news articles using News API.
-        
-        Args:
-            query: Search query (hotel name, city, keywords)
-            from_date: ISO date string, defaults to lookback_hours ago
-        
-        Returns:
-            List of news articles
+        Fetch all RSS feeds once and cache for this run.
+        Cost: 6 HTTP requests total regardless of number of hotels.
         """
-        if not self.api_key or self.api_key == 'your_newsapi_key_here':
-            print("⚠️  Warning: NEWS_API_KEY not configured. Using mock data.")
-            return self._get_mock_data()
-        
-        if not from_date:
-            from_date = (datetime.utcnow() - timedelta(hours=self.lookback_hours)).isoformat()
-        
-        params = {
-            'q': query,
-            'from': from_date,
-            'sortBy': 'publishedAt',
-            'apiKey': self.api_key,
-            'language': 'en',
-            'pageSize': 50
-        }
-        
+        if self._feed_cache is not None:
+            return self._feed_cache
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.lookback_hours)
+        articles = []
+
+        for feed_info in RSS_FEEDS:
+            try:
+                feed = feedparser.parse(feed_info["url"])
+                for entry in feed.entries:
+                    published = self._parse_date(entry)
+                    if published and published < cutoff:
+                        continue  # too old
+
+                    articles.append({
+                        'title': entry.get('title', ''),
+                        'description': entry.get('summary', entry.get('description', '')),
+                        'url': entry.get('link', ''),
+                        'publishedAt': published.isoformat() if published else datetime.now(timezone.utc).isoformat(),
+                        'source': {'name': feed_info['name']},
+                    })
+            except Exception as e:
+                print(f"  ⚠️  RSS feed error ({feed_info['name']}): {e}")
+
+        self._feed_cache = articles
+        return articles
+
+    def _parse_date(self, entry) -> Optional[datetime]:
+        """Parse published date from a feed entry."""
         try:
-            response = requests.get(self.base_url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            
-            if data.get('status') != 'ok':
-                print(f"News API Error: {data.get('message', 'Unknown error')}")
-                return []
-            
-            return data.get('articles', [])
-        
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching news: {e}")
-            return []
-    
-    def search_hotel_risks(self, hotel_name: str, city: str, country: str) -> List[Dict]:
-        """
-        Search for risks specific to a hotel.
-        """
-        search_queries = [
-            f'"{hotel_name}"',
-            f'{hotel_name} incident',
-        ]
-        
-        all_articles = []
-        for query in search_queries:
-            articles = self.search_news(query)
-            all_articles.extend(articles)
-        
-        return self._deduplicate_articles(all_articles)
-    
+            import time
+            t = entry.get('published_parsed') or entry.get('updated_parsed')
+            if t:
+                return datetime.fromtimestamp(time.mktime(t), tz=timezone.utc)
+        except Exception:
+            pass
+        return None
+
     def search_city_risks(self, city: str, country: str) -> List[Dict]:
         """
-        Search for risks affecting the city around the hotel.
+        Filter cached RSS articles for mentions of the specific city.
+        City match is required — country-only matches are too broad when
+        multiple hotels share the same country.
         """
-        search_queries = [
-            f'{city} earthquake',
-            f'{city} hurricane',
-            f'{city} flood',
-            f'{city} riot',
-            f'{city} shooting',
-            f'{city} evacuation',
-            f'{city} airport closure',
-            f'{city} fire',
-        ]
-        
-        all_articles = []
-        for query in search_queries:
-            articles = self.search_news(query)
-            all_articles.extend(articles)
-        
-        return self._deduplicate_articles(all_articles)
-    
+        all_articles = self._fetch_all_feeds()
+        city_lower = city.lower()
+
+        matched = []
+        for article in all_articles:
+            text = f"{article['title']} {article['description']}".lower()
+            if city_lower in text:
+                matched.append(article)
+
+        return matched
+
+    def search_hotel_risks(self, hotel_name: str, city: str, country: str) -> List[Dict]:
+        """
+        Filter cached RSS articles for mentions of the hotel name,
+        combined with city-level results.
+        """
+        all_articles = self._fetch_all_feeds()
+        hotel_lower = hotel_name.lower()
+
+        matched = []
+        seen_urls = set()
+        for article in all_articles:
+            text = f"{article['title']} {article['description']}".lower()
+            if hotel_lower in text:
+                url = article.get('url', '')
+                if url not in seen_urls:
+                    seen_urls.add(url)
+                    matched.append(article)
+
+        # Also include city-level results
+        for article in self.search_city_risks(city, country):
+            url = article.get('url', '')
+            if url not in seen_urls:
+                seen_urls.add(url)
+                matched.append(article)
+
+        return matched
+
     def _deduplicate_articles(self, articles: List[Dict]) -> List[Dict]:
-        """Remove duplicate articles."""
+        """Remove duplicate articles by URL."""
         seen = set()
         unique = []
-        
         for article in articles:
             url = article.get('url', '')
             if url not in seen:
                 seen.add(url)
                 unique.append(article)
-        
         return unique
-    
-    def _get_mock_data(self) -> List[Dict]:
-        """Return mock news data for testing."""
-        mock_events = [
-            {
-                'title': 'Natural Disaster Alert: Earthquake in Budapest Region',
-                'description': 'A 5.2 magnitude earthquake was detected 8km south of Budapest',
-                'url': 'https://example.com/earthquake-budapest',
-                'publishedAt': datetime.utcnow().isoformat(),
-                'source': {'name': 'Global News Network'}
-            },
-            {
-                'title': 'Hurricane Maria Intensifies Approaching Caribbean',
-                'description': 'Category 4 hurricane approaching Cancun area. Tourist areas evacuation ordered.',
-                'url': 'https://example.com/hurricane-maria',
-                'publishedAt': datetime.utcnow().isoformat(),
-                'source': {'name': 'Weather Alert Network'}
-            },
-            {
-                'title': 'Bangkok Airport Closure Extended Due to Flooding',
-                'description': 'Suvarnabhumi Airport remains closed. All flights suspended indefinitely.',
-                'url': 'https://example.com/bangkok-airport',
-                'publishedAt': datetime.utcnow().isoformat(),
-                'source': {'name': 'Thai News Agency'}
-            }
-        ]
-        return mock_events

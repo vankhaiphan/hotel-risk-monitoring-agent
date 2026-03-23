@@ -52,5 +52,8 @@ MEDIUM_SEVERITY_KEYWORDS = {
 
 IGNORE_KEYWORDS = [
     'forecast', 'warning', 'expected', 'potential', 'may occur', 'could happen',
-    'historical', 'anniversary', 'memorial'
+    'historical', 'anniversary', 'memorial',
+    # Political metaphors — not physical events
+    'political landslide', 'election landslide', 'landslide victory', 'landslide win',
+    'entrenched in power', 'firmly entrenched',
 ]

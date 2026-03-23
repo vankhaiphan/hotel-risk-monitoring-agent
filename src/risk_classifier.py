@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from src.config import HIGH_SEVERITY_KEYWORDS, MEDIUM_SEVERITY_KEYWORDS, IGNORE_KEYWORDS
@@ -51,21 +52,27 @@ class RiskClassifier:
         
         return None
     
+    def _keyword_match(self, keyword: str, content: str) -> bool:
+        """Whole-word match to avoid false positives (e.g. 'riot' inside 'patriot')."""
+        pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
+        return bool(re.search(pattern, content))
+
     def _determine_severity(self, content: str) -> tuple:
         """
         Determine severity level and event type.
+        Uses whole-word matching to prevent substring false positives.
         
         Returns:
             Tuple of (severity_level, event_type)
         """
         for category, keywords in self.high_keywords.items():
             for keyword in keywords:
-                if keyword.lower() in content:
+                if self._keyword_match(keyword, content):
                     return 'HIGH', category
         
         for category, keywords in self.medium_keywords.items():
             for keyword in keywords:
-                if keyword.lower() in content:
+                if self._keyword_match(keyword, content):
                     return 'MEDIUM', category
         
         return 'LOW', 'unknown'

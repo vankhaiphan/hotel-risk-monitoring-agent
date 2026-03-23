@@ -23,39 +23,39 @@ class ProximityCalculator:
         
         return c * r
     
-    def is_within_radius(self, hotel_lat: float, hotel_lon: float, 
-                        event_title: str, event_desc: str, 
-                        radius_km: float = 10) -> Tuple[bool, float]:
+    def is_within_radius(self, hotel_lat: float, hotel_lon: float,
+                        event_title: str, event_desc: str,
+                        radius_km: float = 10,
+                        city: str = None) -> Tuple[bool, float]:
         """
-        Determine if event is within search radius.
-        
-        For now, uses title/description matching to detect if event 
-        is near the location. In production, could use geocoding.
-        
+        Determine if a news/weather event is relevant to a specific hotel.
+
+        Strategy:
+          1. If the article explicitly mentions a distance in km, use that.
+          2. If a city name is provided, require it to appear in the article text
+             (prevents country-wide articles being assigned to every hotel).
+          3. City-named events are treated as city-centre distance (5 km).
+
         Returns:
-            Tuple of (is_within_radius, estimated_distance)
+            Tuple of (is_within_radius, estimated_distance_km)
         """
-        # If event mentions the specific address/coordinates, assume it's relevant
-        event_content = f"{event_title} {event_desc}".lower()
-        
-        # Extract distance if mentioned in article
         import re
+        event_content = f"{event_title} {event_desc}".lower()
+
+        # 1. Explicit km distance mentioned in article
         distance_match = re.search(r'(\d+(?:\.\d+)?)\s*km', event_content)
         if distance_match:
             distance = float(distance_match.group(1))
             return distance <= radius_km, distance
-        
-        # If specific location mentioned and within typical city radius, assume within range
-        within_city_phrases = [
-            'downtown', 'city center', 'near', 'nearby', 
-            'downtown area', 'city limits', 'kilometers away'
-        ]
-        
-        for phrase in within_city_phrases:
-            if phrase in event_content:
-                # Assume 5 km average for city-based incidents
-                return True, 5.0
-        
-        # Default: assume it's relevant if article exists
-        # (More sophisticated geocoding can be added later)
+
+        # 2. City-specific check — article must mention the hotel's city
+        if city:
+            city_lower = city.lower()
+            if city_lower not in event_content:
+                # Article doesn't mention this city — not relevant to this hotel
+                return False, 999.0
+            # City mentioned → treat as city-centre event
+            return True, 5.0
+
+        # 3. Fallback for weather alerts (always city-specific via lat/lon)
         return True, 0.0

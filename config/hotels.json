@@ -1,9 +1,44 @@
 [
   {
-    "name": "InterContinental Sydney by IHG",
-    "city": "Sydney",
+    "name": "Best Western Mill Park Motel & Conference Centre",
+    "city": "Mill Park",
     "country": "Australia",
-    "lat": -33.8688,
-    "lon": 151.2093
+    "lat": -37.6667,
+    "lon": 145.1167
+  },
+  {
+    "name": "Best Western Bundaberg Cty Mtr Inn",
+    "city": "Bundaberg",
+    "country": "Australia",
+    "lat": -24.8667,
+    "lon": 152.3500
+  },
+  {
+    "name": "Best Western Bungil Creek Motel",
+    "city": "Bungil Creek",
+    "country": "Australia",
+    "lat": -24.8667,
+    "lon": 152.3500
+  },
+  {
+    "name": "Best Western Parkside Motor Inn",
+    "city": "Coffs Harbour",
+    "country": "Australia",
+    "lat": -30.3000,
+    "lon": 153.1000
+  },
+  {
+    "name": "Hospitality Kalgoorlie, SureStay Collection by Best Western",
+    "city": "Kalgoorlie",
+    "country": "Australia",
+    "lat": -30.7500,
+    "lon": 121.4667
+  },
+  {
+    "name": "Hospitality Esperance, SureStay Collection by Best Western",
+    "city": "Esperance",
+    "country": "Australia",
+    "lat": -33.8667,
+    "lon": 121.9000
   }
 ]

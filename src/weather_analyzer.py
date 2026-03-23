@@ -80,6 +80,13 @@ class WeatherAnalyzer:
                     'event': 'storm_alert'
                 })
             
+            if condition.lower() in ['dust', 'sand', 'mist', 'ash']:
+                extreme_alerts.append({
+                    'title': f'Dust Storm Alert: {description.title()}',
+                    'description': f'Severe storm alert - Dust storm/poor visibility warning in effect. {description.title()} detected. Indoor operations recommended.',
+                    'event': 'dust_storm_alert'
+                })
+            
             if temp < -20 or feels_like < -20:
                 extreme_alerts.append({
                     'title': f'Extreme Cold Alert: {temp}°C',

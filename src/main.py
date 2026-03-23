@@ -72,35 +72,44 @@ class HotelRiskMonitoringAgent:
     
     def _analyze_hotel(self, hotel: Dict) -> List[Dict]:
         """
-        Analyze a single hotel for weather risks only.
-        Skips news API calls, uses weather/disaster data.
+        Analyze a single hotel for risks using:
+          1. Weather alerts (OpenWeatherMap free tier)
+          2. RSS news feeds (Reuters, BBC, AP, ABC, Al Jazeera — no API key, no CORS)
         
         Returns:
             List of high-risk alerts for this hotel
         """
         alerts = []
-        
-        # DISABLED: News API calls - Skip hotel-specific and city news searches
-        # Instead, use only weather/disaster alerts from OpenWeatherMap API
-        weather_articles = self._get_weather_alerts(
+
+        # --- Source 1: Weather alerts ---
+        articles = self._get_weather_alerts(
             hotel['city'],
             hotel['country'],
             hotel['lat'],
             hotel['lon'],
             hotel['name']
         )
-        
+
+        # --- Source 2: RSS news feeds (city-level filter) ---
+        news_articles = self.news_analyzer.search_city_risks(hotel['city'], hotel['country'])
+        articles.extend(news_articles)
+
         # Classify and filter events
-        for article in weather_articles:
+        for article in articles:
             risk_event = self.risk_classifier.classify_event(article, hotel['name'])
             
             if risk_event:
-                # Check proximity
+                # Determine source type: weather alerts are already city-specific
+                is_weather = risk_event.get('source') == 'OpenWeatherMap'
+                city_hint = None if is_weather else hotel['city']
+
+                # Check proximity — for news articles, city name must appear in text
                 within_radius, distance = self.proximity_calc.is_within_radius(
                     hotel['lat'],
                     hotel['lon'],
                     risk_event['title'],
-                    risk_event['description']
+                    risk_event['description'],
+                    city=city_hint
                 )
                 
                 if within_radius:
